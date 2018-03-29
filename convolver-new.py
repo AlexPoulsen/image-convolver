@@ -1023,7 +1023,7 @@ class Convolution:
 
 
 '''
-scatter = Convolution("input_scatter.png", True, False)
+scatter = Convolution("test images/input_scatter.png", True, False)
 scatter.scale(4)
 scatter.convolve(Features.Three.Dot(), 0, 1, False)
 scatter.convolve(Features.Three.Line.Across(), 0, 1, False)
@@ -1031,7 +1031,7 @@ scatter.convolve(Features.Three.Arrow.Up(), 0, 1, False)
 # '''
 
 # '''
-input2 = Convolution("color_tester.png", True, False)
+input2 = Convolution("test images/color_tester.png", True, False)
 # input2.convolve(Features.Color9.CW.RedTop(), 0, 1, False, view=True)
 input2.convolve(Features.Color9.CW.RedTop(), 0, 1, False, view=True, mono_out=True)
 input2.convolve(Features.Color9.CW.RedRight(), 0, 1, False, view=True, mono_out=True)
@@ -1042,7 +1042,7 @@ input2.convolve(Features.Color9.CW.RedLeft(), 0, 1, False, view=True, mono_out=T
 # '''
 
 '''
-input2 = Convolution("input2 xsmall.png", False, False)
+input2 = Convolution("test images/input2 xsmall.png", False, False)
 # input2.convolve(Features.Seven.Diamond.Large(), 0, 1, False, view=True)
 # input2.convolve(Features.Seven.Donut.Large(), 0, 1, False, view=True)
 input2.convolve(Features.Seven.X.Large(), 0, 1, False, view=True)
