@@ -108,6 +108,7 @@ class FeatureMatrix:  # needs odd sized matrix
 		if multichannel is False:
 			self.multi = False
 			self.feature = misc.imread(str(abs_path(input_feature)), mode="L")
+			self.feature = np.flip(self.feature, 1)
 			self.a, self.b = self.feature.shape
 			self.c = 0
 		elif multichannel is True:
@@ -1009,7 +1010,7 @@ class Convolution:
 		self.resize = value
 
 	def convolve(self, input_feature, minimum_value=0, resize=1, append_number=False, view=True, mono_out=False):  # mono_out does nothing without multichannel
-		append = self.name + "_" + str(input_feature).split("/")[-1].split(".")[0]
+		append = self.name + "_" + str(input_feature).split("/")[-1].split(".")[0] + "_" + str(input_feature).split("/")[-2]
 		self.number += 1
 		if minimum_value > 0:
 			min_toggle = True
@@ -1035,7 +1036,7 @@ class Convolution:
 			show_image(enlarge(remap(out), int(resize)))
 
 
-'''
+# '''
 o_large = Convolution("test images/input_o_large.png", False, False)
 o_large.scale(4)
 o_large.convolve(Features.Three.Line.Across(), 0, 1, False, view=False)
@@ -1044,9 +1045,13 @@ o_large.convolve(Features.Three.Line.DownLeft(), 0, 1, False, view=False)
 o_large.convolve(Features.Three.Line.DownRight(), 0, 1, False, view=False)
 o_large.convolve(Features.Three.X(), 0, 1, False, view=False)
 o_large.convolve(Features.Three.Dot(), 0, 1, False, view=False)
+o_large.convolve(Features.Three.Arrow.Up(), 0, 1, False, view=False)
+o_large.convolve(Features.Three.Arrow.Down(), 0, 1, False, view=False)
+o_large.convolve(Features.Three.Arrow.Left(), 0, 1, False, view=False)
+o_large.convolve(Features.Three.Arrow.Right(), 0, 1, False, view=False)
 # '''
 
-'''
+# '''
 x_large = Convolution("test images/input_x_large.png", False, False)
 x_large.scale(4)
 x_large.convolve(Features.Three.Line.Across(), 0, 1, False, view=False)
@@ -1055,6 +1060,10 @@ x_large.convolve(Features.Three.Line.DownLeft(), 0, 1, False, view=False)
 x_large.convolve(Features.Three.Line.DownRight(), 0, 1, False, view=False)
 x_large.convolve(Features.Three.X(), 0, 1, False, view=False)
 x_large.convolve(Features.Three.Dot(), 0, 1, False, view=False)
+x_large.convolve(Features.Three.Arrow.Up(), 0, 1, False, view=False)
+x_large.convolve(Features.Three.Arrow.Down(), 0, 1, False, view=False)
+x_large.convolve(Features.Three.Arrow.Left(), 0, 1, False, view=False)
+x_large.convolve(Features.Three.Arrow.Right(), 0, 1, False, view=False)
 # '''
 
 '''
@@ -1070,8 +1079,13 @@ input2.convolve(Features.Color9.CW.RedLeft(), 0, 1, False, view=True, mono_out=T
 
 '''
 input2 = Convolution("test images/input2 xsmall.png", False, False)
-# input2.convolve(Features.Seven.Diamond.Large(), 0, 1, False, view=True)
-# input2.convolve(Features.Seven.Donut.Large(), 0, 1, False, view=True)
-input2.convolve(Features.Seven.X.Large(), 0, 1, False, view=True)
-# input2.convolve(Features.Seven.Cross.Large(), 0, 1, False, view=True)
+input2.convolve(Features.Seven.X.Large(), 0, 1, False, view=False)
+input2.convolve(Features.Seven.Line.Up(), 0, 1, False, view=False)
+input2.convolve(Features.Seven.Line.Across(), 0, 1, False, view=False)
+input2.convolve(Features.Seven.Line.DownLeft(), 0, 1, False, view=False)
+input2.convolve(Features.Seven.Line.Double.DownLeft(), 0, 1, False, view=False)
+input2.convolve(Features.Seven.Line.Triple.DownLeft(), 0, 1, False, view=False)
+input2.convolve(Features.Seven.Line.DownRight(), 0, 1, False, view=False)
+input2.convolve(Features.Seven.Line.Double.DownRight(), 0, 1, False, view=False)
+input2.convolve(Features.Seven.Line.Triple.DownRight(), 0, 1, False, view=False)
 # '''
