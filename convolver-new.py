@@ -4,7 +4,6 @@ import math
 import os
 import matplotlib.pyplot as plt
 import inspect
-import statistics
 
 
 class ImageMatrix:
@@ -14,6 +13,7 @@ class ImageMatrix:
 			self.opacity = False
 			self.image = misc.imread(str(abs_path(input_image)), mode="L")
 			self.a, self.b = self.image.shape
+			self.c = 1
 		elif multichannel is True:
 			self.multi = True
 			if opacity is False:
@@ -29,17 +29,22 @@ class ImageMatrix:
 		else:
 			pass
 
-	def convolve(self, input_feature, min_val=0, check_min=False, mono_out=False):
+	def convolve(self, input_feature, min_val=0, check_min=False, mono_out=False, progress_bar=True):
 		segment_value = (self.a * self.b) / 80
 		segments = [int(segment_value * n) for n in range(1, 81)]
-		print("#", end="")
-		print("-" * 78, end="")
-		print("#")
+		# print(progress_bar)
+		if progress_bar:
+			print("#", end="", flush=True)
+			print("-" * 78, end="", flush=True)
+			print("#", flush=True)
+		else:
+			print("#-small-image-no-progress-bar--------------------------------------------------#", end="", flush=True)
 		seg_counter = done_amount = 0
 		output = np.zeros(self.image.shape, dtype=np.float32)
 		for ax in range(self.a):
 			for bx in range(self.b):
-				value = self.convolve_sub(input_feature, bx, ax, return_tuple=(not mono_out), increment=(0 if mono_out else [0] * self.c))
+				increment = not (self.multi and (not mono_out))
+				value = self.convolve_sub(input_feature, bx, ax, return_tuple=((not mono_out) and self.multi), increment=(0 if increment else [0] * self.c))
 				if check_min:
 					if value < min_val:
 						value = min_val
@@ -47,12 +52,13 @@ class ImageMatrix:
 				else:
 					output[ax][bx] = value
 				done_amount += 1
-				try:
-					if int(done_amount) == segments[seg_counter]:
-						seg_counter += 1
-						print("#", end="", flush=True)
-				except IndexError:
-					pass
+				if progress_bar:
+					try:
+						if int(done_amount) == segments[seg_counter]:
+							seg_counter += 1
+							print("#", end="", flush=True)
+					except IndexError:
+						pass
 		print()
 		return output
 
@@ -997,6 +1003,7 @@ class Convolution:
 		self.name = str(input_image).split(".")[0]
 		self.number = 0
 		self.resize = 1
+		self.size = self.main_image.a * self.main_image.b
 
 	def scale(self, value):
 		self.resize = value
@@ -1013,7 +1020,13 @@ class Convolution:
 		if resize == 1:
 			resize = self.resize
 		convolve_feature = FeatureMatrix(input_feature, self.multichannel, self.opacity)
-		out = self.main_image.convolve(convolve_feature, minimum_value, min_toggle, mono_out)
+		convolve_size = convolve_feature.a * convolve_feature.a
+		if (self.size * convolve_size) <= 10000:
+			progress_bar = False
+		else:
+			progress_bar = True
+		# print(progress_bar, self.size, convolve_size)
+		out = self.main_image.convolve(convolve_feature, minimum_value, min_toggle, mono_out, progress_bar=progress_bar)
 		if not view:
 			# print(out)
 			save(enlarge(remap(out), int(resize)), append)
@@ -1023,14 +1036,28 @@ class Convolution:
 
 
 '''
-scatter = Convolution("test images/input_scatter.png", True, False)
-scatter.scale(4)
-scatter.convolve(Features.Three.Dot(), 0, 1, False)
-scatter.convolve(Features.Three.Line.Across(), 0, 1, False)
-scatter.convolve(Features.Three.Arrow.Up(), 0, 1, False)
+o_large = Convolution("test images/input_o_large.png", False, False)
+o_large.scale(4)
+o_large.convolve(Features.Three.Line.Across(), 0, 1, False, view=False)
+o_large.convolve(Features.Three.Line.Up(), 0, 1, False, view=False)
+o_large.convolve(Features.Three.Line.DownLeft(), 0, 1, False, view=False)
+o_large.convolve(Features.Three.Line.DownRight(), 0, 1, False, view=False)
+o_large.convolve(Features.Three.X(), 0, 1, False, view=False)
+o_large.convolve(Features.Three.Dot(), 0, 1, False, view=False)
 # '''
 
+'''
+x_large = Convolution("test images/input_x_large.png", False, False)
+x_large.scale(4)
+x_large.convolve(Features.Three.Line.Across(), 0, 1, False, view=False)
+x_large.convolve(Features.Three.Line.Up(), 0, 1, False, view=False)
+x_large.convolve(Features.Three.Line.DownLeft(), 0, 1, False, view=False)
+x_large.convolve(Features.Three.Line.DownRight(), 0, 1, False, view=False)
+x_large.convolve(Features.Three.X(), 0, 1, False, view=False)
+x_large.convolve(Features.Three.Dot(), 0, 1, False, view=False)
 # '''
+
+'''
 input2 = Convolution("test images/color_tester.png", True, False)
 # input2.convolve(Features.Color9.CW.RedTop(), 0, 1, False, view=True)
 input2.convolve(Features.Color9.CW.RedTop(), 0, 1, False, view=True, mono_out=True)
