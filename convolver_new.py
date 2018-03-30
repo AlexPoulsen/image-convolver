@@ -4,6 +4,31 @@ import math
 import os
 import matplotlib.pyplot as plt
 import inspect
+import time
+
+
+class TimingVariables:
+	def __init__(self):
+		self.enable = False
+
+
+def hacky_load(module_name):
+	with open(module_name) as f:
+		code = compile(f.read(), module_name, 'exec')
+		exec(code, globals(), locals())
+
+
+def timeme(method, total_var=None):
+	def wrapper(*args, **kw):
+		if not time_vars.enable:
+			return method(*args, **kw)
+		start_time = int(round(time.time() * 1000))
+		result = method(*args, **kw)
+		end_time = int(round(time.time() * 1000))
+		# print(end_time - start_time, 'ms')
+		time_vars.x_donut_time += (end_time - start_time)
+		return result
+	return wrapper
 
 
 class ImageMatrix:
@@ -29,16 +54,17 @@ class ImageMatrix:
 		else:
 			pass
 
-	def convolve(self, input_feature, min_val=0, check_min=False, mono_out=False, progress_bar=True):
+	def convolve(self, input_feature, min_val=0, check_min=False, mono_out=False, progress_bar=True, run_bar=True):
 		segment_value = (self.a * self.b) / 80
 		segments = [int(segment_value * n) for n in range(1, 81)]
 		# print(progress_bar)
-		if progress_bar:
-			print("#", end="", flush=True)
-			print("-" * 78, end="", flush=True)
-			print("#", flush=True)
-		else:
-			print("#-small-image-no-progress-bar--------------------------------------------------#", end="", flush=True)
+		if run_bar:
+			if progress_bar:
+				print("#", end="", flush=True)
+				print("-" * 78, end="", flush=True)
+				print("#", flush=True)
+			else:
+				print("#-small-image-no-progress-bar--------------------------------------------------#", end="", flush=True)
 		seg_counter = done_amount = 0
 		output = np.zeros(self.image.shape, dtype=np.float32)
 		for ax in range(self.a):
@@ -52,37 +78,16 @@ class ImageMatrix:
 				else:
 					output[ax][bx] = value
 				done_amount += 1
-				if progress_bar:
+				if progress_bar and run_bar:
 					try:
 						if int(done_amount) == segments[seg_counter]:
 							seg_counter += 1
 							print("#", end="", flush=True)
 					except IndexError:
 						pass
-		print()
+		if run_bar:
+			print()
 		return output
-
-	'''
-	def convolve_sub_multi(self, input_feature, x, y):
-		width, height, depth = input_feature.dims()
-		width_partial = math.floor(width/2)
-		height_partial = math.floor(height/2)
-		multi_out = [0] * depth
-		for channel in range(depth):
-			avg_val = width * height
-			increment = 0
-			for ya in range(height):
-				if (ya + y > self.a) or (ya + y < 0):
-					avg_val -= width
-					continue
-				for xa in range(width):
-					if (xa + x > self.b) or (xa + x < 0):
-						avg_val -= 1
-						continue
-					increment += compare(input_feature.coord(xa - width_partial, ya - height_partial)[channel], self.image[y + ya - height_partial][x + xa - width_partial][channel], 255, "&", self.opacity)
-			multi_out[channel] = (increment / avg_val)
-		return multi_out
-	# '''
 
 	def convolve_sub(self, input_feature, x, y, return_tuple=False, increment=0):
 		width, height, depth = input_feature.dims()
@@ -1009,7 +1014,8 @@ class Convolution:
 	def scale(self, value):
 		self.resize = value
 
-	def convolve(self, input_feature, minimum_value=0, resize=1, append_number=False, view=True, mono_out=False):  # mono_out does nothing without multichannel
+	@timeme
+	def convolve(self, input_feature, minimum_value=0, resize=1, append_number=False, view=True, mono_out=False, run_bar=True):  # mono_out does nothing without multichannel
 		append = self.name + "_" + str(input_feature).split("/")[-1].split(".")[0] + "_" + str(input_feature).split("/")[-2]
 		self.number += 1
 		if minimum_value > 0:
@@ -1027,7 +1033,7 @@ class Convolution:
 		else:
 			progress_bar = True
 		# print(progress_bar, self.size, convolve_size)
-		out = self.main_image.convolve(convolve_feature, minimum_value, min_toggle, mono_out, progress_bar=progress_bar)
+		out = self.main_image.convolve(convolve_feature, minimum_value, min_toggle, mono_out, progress_bar=progress_bar, run_bar=run_bar)
 		if not view:
 			# print(out)
 			save(enlarge(remap(out), int(resize)), append)
@@ -1036,7 +1042,7 @@ class Convolution:
 			show_image(enlarge(remap(out), int(resize)))
 
 
-# '''
+'''
 o_large = Convolution("test images/input_o_large.png", False, False)
 o_large.scale(4)
 o_large.convolve(Features.Three.Line.Across(), 0, 1, False, view=False)
@@ -1051,7 +1057,7 @@ o_large.convolve(Features.Three.Arrow.Left(), 0, 1, False, view=False)
 o_large.convolve(Features.Three.Arrow.Right(), 0, 1, False, view=False)
 # '''
 
-# '''
+'''
 x_large = Convolution("test images/input_x_large.png", False, False)
 x_large.scale(4)
 x_large.convolve(Features.Three.Line.Across(), 0, 1, False, view=False)
@@ -1065,6 +1071,22 @@ x_large.convolve(Features.Three.Arrow.Down(), 0, 1, False, view=False)
 x_large.convolve(Features.Three.Arrow.Left(), 0, 1, False, view=False)
 x_large.convolve(Features.Three.Arrow.Right(), 0, 1, False, view=False)
 # '''
+
+
+# '''
+time_vars = TimingVariables()
+time_vars.x_donut_time = 0
+time_vars.enable = True
+
+
+x_large = Convolution("test images/input_x_large.png", False, False)
+for n in range(1000):
+	x_large.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False)
+
+
+print(time_vars.x_donut_time / 1000, "ms")
+# '''
+
 
 '''
 input2 = Convolution("test images/color_tester.png", True, False)
