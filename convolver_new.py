@@ -7,6 +7,26 @@ import inspect
 import time
 
 
+class Infix:
+    def __init__(self, function):
+        self.function = function
+
+    def __ror__(self, other):
+        return Infix(lambda x, self=self, other=other: self.function(other, x))
+
+    def __or__(self, other):
+        return self.function(other)
+
+    def __rlshift__(self, other):
+        return Infix(lambda x, self=self, other=other: self.function(other, x))
+
+    def __rshift__(self, other):
+        return self.function(other)
+
+    def __call__(self, value1, value2):
+        return self.function(value1, value2)
+
+
 class TimingVariables:
 	def __init__(self):
 		self.enable = False
@@ -26,7 +46,7 @@ def timeme(method, total_var=None):
 		result = method(*args, **kw)
 		end_time = int(round(time.time() * 1000))
 		# print(end_time - start_time, 'ms')
-		time_vars.x_donut_time += (end_time - start_time)
+		time_vars.timer += (end_time - start_time)
 		return result
 	return wrapper
 
@@ -1015,7 +1035,7 @@ class Convolution:
 		self.resize = value
 
 	@timeme
-	def convolve(self, input_feature, minimum_value=0, resize=1, append_number=False, view=True, mono_out=False, run_bar=True):  # mono_out does nothing without multichannel
+	def convolve(self, input_feature, minimum_value=0, resize=1, append_number=False, view=True, mono_out=False, run_bar=True, append_custom=""):  # mono_out does nothing without multichannel
 		append = self.name + "_" + str(input_feature).split("/")[-1].split(".")[0] + "_" + str(input_feature).split("/")[-2]
 		self.number += 1
 		if minimum_value > 0:
@@ -1026,6 +1046,8 @@ class Convolution:
 			append += "_" + str(self.number)
 		if resize == 1:
 			resize = self.resize
+		if not (append_custom == ""):
+			append += "_" + append_custom
 		convolve_feature = FeatureMatrix(input_feature, self.multichannel, self.opacity)
 		convolve_size = convolve_feature.a * convolve_feature.a
 		if (self.size * convolve_size) <= 10000:
@@ -1073,19 +1095,75 @@ x_large.convolve(Features.Three.Arrow.Right(), 0, 1, False, view=False)
 # '''
 
 
-# '''
 time_vars = TimingVariables()
-time_vars.x_donut_time = 0
-time_vars.enable = True
 
 
-x_large = Convolution("test images/input_x_large.png", False, False)
-for n in range(1000):
-	x_large.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False)
+def time_tests(count):
+	time_vars.timer = 0
+	time_vars.enable = True
+	approx_time_per_pixel = 0
+	avg = Infix(lambda x, y: (x + y) / 2)
+	x_large = Convolution("test images/input_x_large.png", False, False)
+	for n in range(count):
+		x_large.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 3x3 gs")
+	approx_time_per_pixel = (time_vars.timer / count) / (21 * 21 * 3 * 3 * 1)
+	x_large = Convolution("test images/input_x_large.png", True, False)
+	for n in range(count):
+		x_large.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 3x3 mono -> clr")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
+	for n in range(count):
+		x_large.convolve(Features.Three.Donut(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 3x3 mono -> clr -> mono")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
+	for n in range(count):
+		x_large.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 5x5 mono x clr")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	for n in range(count):
+		x_large.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 5x5 mono x clr -> mono")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	for n in range(count):
+		x_large.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 9x9 mono x clr")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	for n in range(count):
+		x_large.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 9x9 mono x clr -> mono")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	clr_small = Convolution("test images/input_color_small.png", True, False)
+	for n in range(count):
+		clr_small.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 3x3 clr x mono")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	for n in range(count):
+		clr_small.convolve(Features.Three.Donut(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 3x3 clr x mono -> mono")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
+	for n in range(count):
+		clr_small.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 5x5 clr")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	for n in range(count):
+		clr_small.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 5x5 clr -> mono")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	for n in range(count):
+		clr_small.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 9x9 clr")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	for n in range(count):
+		clr_small.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
+	print(time_vars.timer / count, "ms 21x21 9x9 clr -> mono")
+	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	print(approx_time_per_pixel, "ms, approximate time per pixel")
+	time_vars.timer = 0
+	time_vars.enable = False  # remove the decorator for normal use
 
 
-print(time_vars.x_donut_time / 1000, "ms")
-# '''
+time_tests(1000)
 
 
 '''
