@@ -7,35 +7,9 @@ import inspect
 import time
 
 
-class Infix:
-    def __init__(self, function):
-        self.function = function
-
-    def __ror__(self, other):
-        return Infix(lambda x, self=self, other=other: self.function(other, x))
-
-    def __or__(self, other):
-        return self.function(other)
-
-    def __rlshift__(self, other):
-        return Infix(lambda x, self=self, other=other: self.function(other, x))
-
-    def __rshift__(self, other):
-        return self.function(other)
-
-    def __call__(self, value1, value2):
-        return self.function(value1, value2)
-
-
 class TimingVariables:
 	def __init__(self):
 		self.enable = False
-
-
-def hacky_load(module_name):
-	with open(module_name) as f:
-		code = compile(f.read(), module_name, 'exec')
-		exec(code, globals(), locals())
 
 
 def timeme(method, total_var=None):
@@ -51,23 +25,29 @@ def timeme(method, total_var=None):
 	return wrapper
 
 
+def curry(f, x):
+	def curried_function(*args, **kw):
+		return f(*((x, )+args), **kw)
+	return curried_function
+
+
 class ImageMatrix:
 	def __init__(self, input_image, multichannel=False, opacity=False):  # only enable multichannel if the feature is also multichannel
 		if multichannel is False:
 			self.multi = False
 			self.opacity = False
-			self.image = misc.imread(str(abs_path(input_image)), mode="L")
+			self.image = np.asarray(misc.imread(str(abs_path(input_image)), mode="L"), dtype=np.float32)
 			self.a, self.b = self.image.shape
 			self.c = 1
 		elif multichannel is True:
 			self.multi = True
 			if opacity is False:
 				self.opacity = False
-				self.image = misc.imread(str(abs_path(input_image)), mode="RGB")
+				self.image = np.asarray(misc.imread(str(abs_path(input_image)), mode="RGB"), dtype=np.float32)
 				self.a, self.b, self.c = self.image.shape
 			elif opacity is True:
 				self.opacity = True
-				self.image = misc.imread(str(abs_path(input_image)), mode="RGBA")
+				self.image = np.asarray(misc.imread(str(abs_path(input_image)), mode="RGBA"), dtype=np.float32)
 				self.a, self.b, self.c = self.image.shape
 			else:
 				pass
@@ -87,16 +67,15 @@ class ImageMatrix:
 				print("#-small-image-no-progress-bar--------------------------------------------------#", end="", flush=True)
 		seg_counter = done_amount = 0
 		output = np.zeros(self.image.shape, dtype=np.float32)
+		width, height, depth = input_feature.a, input_feature.b, input_feature.c
+		width_partial, height_partial, avg_val = math.floor(width/2), math.floor(height/2), width * height
 		for ax in range(self.a):
 			for bx in range(self.b):
 				increment = not (self.multi and (not mono_out))
-				value = self.convolve_sub(input_feature, bx, ax, return_tuple=((not mono_out) and self.multi), increment=(0 if increment else [0] * self.c))
+				value = self.convolve_sub(input_feature, bx, ax, width, height, depth, width_partial, height_partial, avg_val, return_tuple=((not mono_out) and self.multi), increment=(0 if increment else [0] * self.c), channels=(depth, self.c))
 				if check_min:
-					if value < min_val:
-						value = min_val
-					output[ax][bx] = value
-				else:
-					output[ax][bx] = value
+					raise DeprecationWarning
+				output[ax][bx] = value
 				done_amount += 1
 				if progress_bar and run_bar:
 					try:
@@ -109,11 +88,7 @@ class ImageMatrix:
 			print()
 		return output
 
-	def convolve_sub(self, input_feature, x, y, return_tuple=False, increment=0):
-		width, height, depth = input_feature.dims()
-		width_partial = math.floor(width/2)
-		height_partial = math.floor(height/2)
-		avg_val = width * height
+	def convolve_sub(self, input_feature, x, y, width, height, depth, width_partial, height_partial, avg_val, return_tuple=False, increment=0, channels=(1, 1)):
 		for ya in range(height):
 			if (ya + y > self.a) or (ya + y < 0):
 				avg_val -= width
@@ -122,7 +97,7 @@ class ImageMatrix:
 				if (xa + x > self.b) or (xa + x < 0):
 					avg_val -= 1
 					continue
-				out = compare(input_feature.coord(xa - width_partial, ya - height_partial), self.image[y + ya - height_partial][x + xa - width_partial], 255, "&", self.opacity, return_tuple=return_tuple)
+				out = compare(input_feature.coord(xa - width_partial, ya - height_partial), self.image[y + ya - height_partial][x + xa - width_partial], 255, self.opacity, return_tuple=return_tuple, channels=channels)
 				# print(increment, out)
 				increment = multi_add(increment, out, lists=return_tuple)
 		return multi_div(increment, avg_val)
@@ -132,44 +107,36 @@ class FeatureMatrix:  # needs odd sized matrix
 	def __init__(self, input_feature, multichannel=False, opacity=False):  # only enable multichannel if the image is also multichannel
 		if multichannel is False:
 			self.multi = False
-			self.feature = misc.imread(str(abs_path(input_feature)), mode="L")
-			self.feature = np.flip(self.feature, 1)
+			self.feature = np.asarray(np.flip(misc.imread(str(abs_path(input_feature)), mode="L"), 1), dtype=np.float32)
 			self.a, self.b = self.feature.shape
 			self.c = 0
 		elif multichannel is True:
 			self.multi = True
 			if opacity is False:
 				self.opacity = False
-				self.feature = misc.imread(str(abs_path(input_feature)), mode="RGB")
+				self.feature = np.asarray(np.flip(misc.imread(str(abs_path(input_feature)), mode="RGB"), 1), dtype=np.float32)
 				self.a, self.b, self.c = self.feature.shape
 			elif opacity is True:
 				self.opacity = True
-				self.feature = misc.imread(str(abs_path(input_feature)), mode="RGBA")
+				self.feature = np.asarray(np.flip(misc.imread(str(abs_path(input_feature)), mode="RGBA"), 1), dtype=np.float32)
 				self.a, self.b, self.c = self.feature.shape
 			else:
 				pass
 		else:
 			pass
-		'''
-		if (self.a/2 - math.floor(self.a/2) == 0.5) or (self.b/2 - math.floor(self.b/2) == 0.5):
-			self.feature.resize((self.a - 1, self.b - 1))
-		# '''
+		self.x_offset = math.ceil(self.b / 2) - 1
+		self.y_offset = math.ceil(self.a / 2) - 1
 
 	def coord(self, x, y):  # centered, use negative coords too, again, matrix must be odd sized
-		x = x + math.ceil(self.b / 2) - 1  # |      |       (-1,  1) (0,  1) (1,  1)
-		y = (-1 * y) + math.ceil(self.a / 2) - 1  # |       (-1,  0) (0,  0) (1,  0)
-		if type(self.feature[0][0]) == np.uint8:  # |       (-1, -1) (0, -1) (1, -1)
-			return float(self.feature[y][x].astype(float))
-		elif type(self.feature[0][0]) == np.ndarray:
-			return self.feature[y][x].tolist()
+		x = x + self.x_offset
+		y = (-1 * y) + self.y_offset
+		if self.multi:
+			return self.feature[y][x]
 		else:
-			return "type check fail"
+			return self.feature[y][x]
 
 	# def __len__(self):
 	# 	return self.b, self.a
-
-	def dims(self):
-		return self.b, self.a, self.c
 
 	def __repr__(self):
 		out = ""
@@ -713,14 +680,14 @@ class InvalidArgumentError(Exception):
 
 def multi_add(a, b, lists=True):
 	if lists:
-		return [a + b for a, b in zip(a, b)]
+		return a + b  # this will break if not ndarrays [a + b for a, b in zip(a, b)]
 	else:
 		return a + b
 
 
 def multi_div(t, i):  # divides tuple and int
 	try:
-		return [n / i for n in t]
+		return t / i  # this will break if not ndarrays[n / i for n in t]
 	except TypeError:
 		return t / i
 
@@ -733,201 +700,81 @@ def print2d(array, space=3):
 		print()
 
 
-def compare(a, b, maximum=1, polarity="&", scaled=True, opacity_mode=False, return_tuple=False):  # return_tuple requires inputting lists/ndarrays
-	if not ((polarity == "&") or (polarity == "+") or (polarity == "-")):
-		raise InvalidArgumentError("Polarity Argument must be \"&\" or \"+\" or \"-\"")
-	a_type = type(a)
-	b_type = type(b)
-	# debug(a, b)
-	if (a_type == list or b_type == list) or (a_type == np.ndarray or b_type == np.ndarray):  # and polarity == "&":
-		if a_type == np.ndarray:
-			a = a.tolist()
-			a_type = type(a)
-		if b_type == np.ndarray:
-			b = b.tolist()
-			b_type = type(b)
-		if (a_type != list) and (b_type == list):
-			a = [a for n in b]
-		elif (b_type != list) and (a_type == list):
-			b = [b for n in a]
-		elif (a_type != list) and (b_type != list):
-			a = [a]
-			b = [b]
-		if opacity_mode is True:
-			try:
-				o = (list(longer(a, b))[3]/maximum + 1) / 2
-			except IndexError:
-				o = 1
-			l = larger(len(a), len(b)) - 1
-		else:
-			o = 1
-			l = larger(len(a), len(b))
+def any_above(iterable, value):
+	for it in iterable:
+		if it > value:
+			return True
+	return False
+
+
+def compare(a, b, maximum=1, scaled=True, opacity_mode=False, return_tuple=False, channels=(1, 1)):  # return_tuple requires inputting lists/ndarrays, channel values of both 1 treats inputs as single numbers, 0 as strings
+	if channels[0] == channels[1] == 1:
 		try:
-			if not return_tuple:
-				# debug(a, b)
-				out = [(b[x] - a[x]) for x in range(l)]
-				absolute = [1 - abs(outx/maximum) for outx in out]
-				if scaled is True:
-					return sum([absx * maximum for absx in absolute])/l
-				elif scaled is False:
-					return sum(absolute)/l
-				else:
-					return None
-			elif return_tuple:
-				# debug(a, b)
-				out = [(b[x] - a[x]) for x in range(l)]
-				absolute = [1 - abs(outx/maximum) for outx in out]
-				if scaled is True:
-					return [absx * maximum for absx in absolute]
-				elif scaled is False:
-					return absolute
-				else:
-					return None
+			absolute = 1 - abs((b - a)/maximum)
+			if scaled:
+				return absolute * maximum
 			else:
-				print("<!> warning - incorrect input!")
+				return absolute
 		except ZeroDivisionError or ValueError:
 			return None
-	elif (a_type == str) or (b_type == str):  # and polarity == "&":
+	elif (channels[0] == 0) or (channels[1] == 0):
 		a = float(a)
 		b = float(b)
 		try:
 			absolute = 1 - abs((b - a) / maximum)
-			if scaled is True:
+			if scaled:
 				return absolute * maximum
-			elif scaled is False:
-				return absolute
 			else:
-				return None
+				return absolute
 		except ZeroDivisionError or ValueError:
 			return None
-	elif ((a_type == int) or (b_type == int)) or ((a_type == float) or (b_type == float)):  # and polarity == "&":
+	elif any_above(channels, 1):
+		if channels[0] == 1:
+			a = np.asarray([a] * b)
+		elif channels[1] == 1:
+			b = np.asarray([b] * a)
+		elif channels[0] != channels[1]:
+			if channels[0] > channels[1]:
+				channels[0] = channels[1]
+				a = a[:len(b)]
+			elif channels[0] < channels[1]:
+				channels[1] = channels[0]
+				b = b[:len(a)]
+		if opacity_mode is True:
+			print("not finished")
+			try:
+				o = (list(longer(a, b))[3]/maximum + 1) / 2
+			except IndexError:
+				o = 1
+			# channels = longer(a, b) - 1
+		else:
+			o = 1
+			# channels = longer(a, b)
 		try:
-			absolute = 1 - abs((b - a)/maximum)
-			if scaled is True:
-				return absolute * maximum
-			elif scaled is False:
-				return absolute
+			if return_tuple:
+				absolute = 1 - abs((b - a) / maximum)  # this will break if not ndarrays
+				if scaled:
+					return absolute * maximum
+				else:
+					return absolute
 			else:
-				return None
+				absolute = 1 - abs((b - a) / maximum)  # this will break if not ndarrays
+				if scaled:
+					return np.mean(absolute * maximum)
+				else:
+					return np.mean(absolute)
 		except ZeroDivisionError or ValueError:
 			return None
 	else:
-		raise InvalidArgumentError("Input is neither an int, float, list, numpy array, or string convertable to int or float. compare() cannot parse this unknown type [ " + str(type(a)) + " | " + str(type(b)) + " ]")
-	'''
-	# so idk what these even did, and i've never used them afaik, and i wrote it a year ago. lazy coding ftw
-	elif (a_type == list or b_type == list) or (a_type == np.ndarray or b_type == np.ndarray) and polarity == "+":
-		if a_type == np.ndarray:
-			a = a.tolist()
-		if b_type == np.ndarray:
-			b = b.tolist()
-		if (a_type != list) and (b_type == list):
-			a = [a for n in b]
-		elif (b_type != list) and (a_type == list):
-			b = [b for n in a]
-		elif (a_type != list) and (b_type != list):
-			a = [a]
-			b = [b]
-		if opacity_mode is True:
-			try:
-				o = (list(longer(a, b))[3]/maximum + 1) / 2
-			except IndexError:
-				o = 1
-			l = larger(len(a), len(b)) - 1
-		else:
-			o = 1
-			l = larger(len(a), len(b))
-		try:
-			out = [(a[x] - b[x]) for x in range(l)]
-			absolute = [1 - (abs(outx)/maximum) for outx in out]
-			if scaled is True:
-				return (sum([absx * maximum for absx in absolute])/l + maximum) / 2
-			elif scaled is False:
-				return (sum(absolute)/l + 1) / 2
-			else:
-				return None
-		except ZeroDivisionError or ValueError:
-			return None
-	elif (a_type == list or b_type == list) or (a_type == np.ndarray or b_type == np.ndarray) and polarity == "-":
-		if a_type == np.ndarray:
-			a = a.tolist()
-		if b_type == np.ndarray:
-			b = b.tolist()
-		if (a_type != list) and (b_type == list):
-			a = [a for n in b]
-		elif (b_type != list) and (a_type == list):
-			b = [b for n in a]
-		elif (a_type != list) and (b_type != list):
-			a = [a]
-			b = [b]
-		if opacity_mode is True:
-			try:
-				o = (list(longer(a, b))[3]/maximum + 1) / 2
-			except IndexError:
-				o = 1
-			l = larger(len(a), len(b)) - 1
-		else:
-			o = 1
-			l = larger(len(a), len(b))
-		try:
-			out = [(a[x] - b[x]) for x in range(l)]
-			absolute = [-(1 - (-abs(outx)/maximum)) for outx in out]
-			if scaled is True:
-				return (sum([absx * maximum for absx in absolute])/l + maximum) / 2
-			elif scaled is False:
-				return (sum(absolute)/l + 1) / 2
-			else:
-				return None
-		except ZeroDivisionError or ValueError:
-			return None
-	elif ((a_type == str) or (b_type == str)) and polarity == "+":
-		a = float(a)
-		b = float(b)
-		try:
-			absolute = 1 - (abs(a - b) / maximum)
-			if scaled is True:
-				return absolute * maximum
-			elif scaled is False:
-				return absolute
-			else:
-				return None
-		except ZeroDivisionError or ValueError:
-			return None
-	elif ((a_type == str) or (b_type == str)) and polarity == "-":
-		a = float(a)
-		b = float(b)
-		try:
-			absolute = -(1 - (-abs(a - b) / maximum))
-			if scaled is True:
-				return absolute * maximum
-			elif scaled is False:
-				return absolute
-			else:
-				return None
-		except ZeroDivisionError or ValueError:
-			return None
-	elif (((a_type == int) or (b_type == int)) or ((a_type == float) or (b_type == float))) and polarity == "+":
-		try:
-			absolute = 1 - (abs(a - b) / maximum)
-			if scaled is True:
-				return absolute * maximum
-			elif scaled is False:
-				return absolute
-			else:
-				return None
-		except ZeroDivisionError or ValueError:
-			return None
-	elif (((a_type == int) or (b_type == int)) or ((a_type == float) or (b_type == float))) and polarity == "-":
-		try:
-			absolute = -(1 - (-abs(a - b) / maximum))
-			if scaled is True:
-				return absolute * maximum
-			elif scaled is False:
-				return absolute
-			else:
-				return None
-		except ZeroDivisionError or ValueError:
-			return None
-	# '''
+		raise InvalidArgumentError("channel parameter is not formatted correctly")
+
+
+class DimensionError(Exception):
+	def __init__(self, message):
+		self.message = message
+
+	def __repr__(self):
+		return "DimensionError: " + self.message
 
 
 def enlarge(array, amount):
@@ -943,13 +790,14 @@ def enlarge(array, amount):
 			elif len(array.shape) == 3:
 				size = amount, amount, 1
 			else:
-				# print(array.shape)
-				size = amount, amount, 1
+				raise DimensionError("unsupported array shape")
 			# print2d(np.kron(array, np.ones(size, dtype="float")))
 			return np.kron(array, np.ones(size, dtype="float"))
 
 
-def remap(array):
+def remap(array, enable=True):
+	if not enable:
+		return array
 	min = np.amin(array)
 	max = np.amax(array)
 	# print(array)
@@ -1034,8 +882,7 @@ class Convolution:
 	def scale(self, value):
 		self.resize = value
 
-	@timeme
-	def convolve(self, input_feature, minimum_value=0, resize=1, append_number=False, view=True, mono_out=False, run_bar=True, append_custom=""):  # mono_out does nothing without multichannel
+	def convolve(self, input_feature, minimum_value=0, resize=1, append_number=False, view=True, mono_out=False, run_bar=True, append_custom="", expandcontrast=True):  # mono_out does nothing without multichannel
 		append = self.name + "_" + str(input_feature).split("/")[-1].split(".")[0] + "_" + str(input_feature).split("/")[-2]
 		self.number += 1
 		if minimum_value > 0:
@@ -1058,10 +905,10 @@ class Convolution:
 		out = self.main_image.convolve(convolve_feature, minimum_value, min_toggle, mono_out, progress_bar=progress_bar, run_bar=run_bar)
 		if not view:
 			# print(out)
-			save(enlarge(remap(out), int(resize)), append)
+			save(enlarge(remap(out, expandcontrast), int(resize)), append)
 		elif view:
 			# print(out)
-			show_image(enlarge(remap(out), int(resize)))
+			show_image(enlarge(remap(out, expandcontrast), int(resize)))
 
 
 '''
@@ -1098,11 +945,12 @@ x_large.convolve(Features.Three.Arrow.Right(), 0, 1, False, view=False)
 time_vars = TimingVariables()
 
 
+"""
 def time_tests(count):
 	time_vars.timer = 0
 	time_vars.enable = True
 	approx_time_per_pixel = 0
-	avg = Infix(lambda x, y: (x + y) / 2)
+	tests = 0
 	x_large = Convolution("test images/input_x_large.png", False, False)
 	for n in range(count):
 		x_large.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
@@ -1112,72 +960,86 @@ def time_tests(count):
 	for n in range(count):
 		x_large.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 3x3 mono -> clr")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
+	tests += 1
 	for n in range(count):
 		x_large.convolve(Features.Three.Donut(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 3x3 mono -> clr -> mono")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
+	tests += 1
 	for n in range(count):
 		x_large.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 5x5 mono x clr")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	tests += 1
 	for n in range(count):
 		x_large.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 5x5 mono x clr -> mono")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	tests += 1
 	for n in range(count):
 		x_large.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 9x9 mono x clr")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	tests += 1
 	for n in range(count):
 		x_large.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 9x9 mono x clr -> mono")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	tests += 1
 	clr_small = Convolution("test images/input_color_small.png", True, False)
 	for n in range(count):
 		clr_small.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 3x3 clr x mono")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	tests += 1
 	for n in range(count):
 		clr_small.convolve(Features.Three.Donut(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 3x3 clr x mono -> mono")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
+	tests += 1
 	for n in range(count):
 		clr_small.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 5x5 clr")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	tests += 1
 	for n in range(count):
 		clr_small.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 5x5 clr -> mono")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
+	tests += 1
 	for n in range(count):
 		clr_small.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 9x9 clr")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	tests += 1
 	for n in range(count):
 		clr_small.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
 	print(time_vars.timer / count, "ms 21x21 9x9 clr -> mono")
-	approx_time_per_pixel | avg | (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
+	tests += 1
+	approx_time_per_pixel /= tests
 	print(approx_time_per_pixel, "ms, approximate time per pixel")
 	time_vars.timer = 0
 	time_vars.enable = False  # remove the decorator for normal use
 
 
-time_tests(1000)
+# time_tests(1000)
+# """
 
 
-'''
+# '''
 input2 = Convolution("test images/color_tester.png", True, False)
-# input2.convolve(Features.Color9.CW.RedTop(), 0, 1, False, view=True)
-input2.convolve(Features.Color9.CW.RedTop(), 0, 1, False, view=True, mono_out=True)
-input2.convolve(Features.Color9.CW.RedRight(), 0, 1, False, view=True, mono_out=True)
-input2.convolve(Features.Color9.CW.RedBottom(), 0, 1, False, view=True, mono_out=True)
-input2.convolve(Features.Color9.CW.RedLeft(), 0, 1, False, view=True, mono_out=True)
-# input2.convolve(Features.Color9.CCW.RedTop(), 0, 1, False, view=True)
-# input2.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, view=True)
+input2.convolve(Features.Color9.CW.RedTop(), 0, 1, False, view=False)
+input2.convolve(Features.Color9.CW.RedTop(), 0, 1, False, view=False, mono_out=True)
+input2.convolve(Features.Color9.CW.RedRight(), 0, 1, False, view=False, mono_out=True)
+input2.convolve(Features.Color9.CW.RedBottom(), 0, 1, False, view=False, mono_out=True)
+input2.convolve(Features.Color9.CW.RedLeft(), 0, 1, False, view=False, mono_out=True)
+input2.convolve(Features.Color9.CCW.RedTop(), 0, 1, False, view=False)
+input2.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, view=False)
 # '''
 
-'''
+# '''
 input2 = Convolution("test images/input2 xsmall.png", False, False)
 input2.convolve(Features.Seven.X.Large(), 0, 1, False, view=False)
 input2.convolve(Features.Seven.Line.Up(), 0, 1, False, view=False)
