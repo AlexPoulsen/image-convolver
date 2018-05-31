@@ -1,28 +1,13 @@
 # image-convolver
-version 2.4 of my image convolver. previous versions were not on github unfortunately.
+version 3.0 of my image convolver.
 
-running requires numpy, scipy, math, os, matplotlib, and inspect
+running requires numpy, math, os, matplotlib, inspect, time, typing, atexit, and imageio, including standard lib packages.
 
 run time on multichannel images (i.e. color vs grayscale) shouldn't be much more than run time on single channel images.
 
-times averaged over 1000 runs
-
-* 39.086 ms 21x21 3x3 gs
-* 73.444 ms 21x21 3x3 mono -> clr
-* 103.0 ms 21x21 3x3 mono -> clr -> mono
-* 178.695 ms 21x21 5x5 mono x clr
-* 252.252 ms 21x21 5x5 mono x clr -> mono
-* 459.035 ms 21x21 9x9 mono x clr
-* 641.333 ms 21x21 9x9 mono x clr -> mono
-* 673.694 ms 21x21 3x3 clr x mono
-* 702.674 ms 21x21 3x3 clr x mono -> mono
-* 776.033 ms 21x21 5x5 clr
-* 845.151 ms 21x21 5x5 clr -> mono
-* 1035.856 ms 21x21 9x9 clr
-* 1227.949 ms 21x21 9x9 clr -> mono
-* 0.009847820609725371 ms, approximate time per pixel
+updated time testing will be added soon.
 
 ## examples
-for small images, the progress bar is partially disabled so that every convolution has a print() that says it is running. otherwise they may be too fast for all of the progress bars to print, even with print set to flush output
+for small images, the progress bar is partially disabled so that every convolution has a print() that says it is running. otherwise they may be too fast for all of the progress bars to print, even with print set to flush output. The numbers that set whether it prints normally, adds a delay on each print to let it flush, or removing the loading part, are dependant on the hardware you run it on. I will be working on a function that will generate them for you based on your hardware, but for the time being, you should change them yourself to suit your computer.
 
-![](o_x_demostration.png)
+For an image demonstration, please see the test images directory until i get around to making another demo pic. The replaced part of the algorithm starting in v3 has changed the output around edges, which is now more correct, but it is slightly different than before, so the old demo image is not usable any more.
