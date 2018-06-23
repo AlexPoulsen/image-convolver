@@ -5,35 +5,7 @@ import matplotlib.pyplot as plt
 import inspect
 import time
 from typing import *
-import atexit
 import imageio
-
-
-class TimingVariables:
-	def __init__(self):
-		self.enable = False
-
-
-def timeme(method, total_var=None):
-	def wrapper(*args, **kw):
-		if not time_vars.enable:
-			return method(*args, **kw)
-		start_time = int(round(time.time() * 1000))
-		result = method(*args, **kw)
-		end_time = int(round(time.time() * 1000))
-		# print(end_time - start_time, 'ms')
-		time_vars.timer += (end_time - start_time)
-		return result
-	return wrapper
-
-
-time_vars = TimingVariables()
-
-
-def curry(f, x):
-	def curried_function(*args, **kw):
-		return f(*((x, )+args), **kw)
-	return curried_function
 
 
 class InvalidArgumentError(Exception):
@@ -182,108 +154,68 @@ def compare_array(a, b, maximum=1, scaled=True, opacity_mode=False, return_tuple
 		return None
 
 
-class DeprecatedFunctionError(Exception):
-	__slots__ = ["message"]
-
-	def __init__(self, message):
-		self.message = message
-
-	def __repr__(self):
-		return "DeprecatedFunctionError: " + self.message
-
-
-class DeprecationReturnObject(object):
-	__slots__ = ["uuid", "options", "logs", "message", "log_var", "log_type", "logging", "persistence", "crash"]
-
-	def __init__(self, uuid):
-		self.uuid = uuid
-		self.options = False
-		self.logs = {}
-
-	def log(self, L):
-		try:
-			return self.logs[L]
-		except KeyError:
-			return None
-
-	def __call__(self, result: Any, message: Optional[str] = None, log_var: Optional[object] = None, log_type: Union[bool, int, str] = bool, persistence: bool = False, crash: bool = False):
-		if self.options:
-			if log_var != self.log_var:
-				try:
-					self.logs[log_var] = log_type()
-					if log_type is int:
-						self.logs[log_var] += 1
-				except TypeError:
-					self.logs[log_var] = type(log_type)()
-			if self.crash:
-				raise DeprecatedFunctionError(f"{self.message} result: {result}")
-			if self.persistence:
-				print(f"Deprecated function warning: {self.message}")
-			if self.logging:
-				if self.log_type is bool:
-					self.logs[self.log_var] = True
-					self.logging = True if self.persistence else False
-				elif self.log_type is int:
-					self.logs[self.log_var] += 1
-				elif self.log_type is str:
-					self.logs[self.log_var] = f"Deprecated Function {self.uuid} called"
-				else:
-					raise InvalidArgumentError(f"Variable {self.log_var} of type {self.log_type} is not a valid input")
-			return result
-		self.message: Optional[str] = message
-		self.log_var: Optional[object] = log_var
-		self.log_type: Union[bool, int, str] = log_type
-		if log_var:
-			self.logging = True
-			try:
-				self.logs[log_var] = log_type()
-				if log_type is int:
-					self.logs[log_var] += 1
-			except TypeError:
-				self.logs[log_var] = type(log_type)()
-		else:
-			self.logging = False
-		self.persistence: bool = persistence
-		self.crash: bool = crash
-		self.options = True
-		print(f"Deprecated function warning: {self.message}")
-		return result
-
-
-class DeprecationReturn(object):
-	__slots__ = []
-
-	ids = {}  # where = inspect.stack()[2][3] + str(inspect.getframeinfo(inspect.stack()[1][0]).lineno)
-
-	def __init__(self):
-		pass
-
-	@atexit.register
-	def end_stats():
-		if len(deprecation_return.ids) == 0:
-			return
-		print(f"{len(deprecation_return.ids)} Deprecated Function Call{'s' if len(deprecation_return.ids) != 1 else ''}")
-		for I in deprecation_return.ids:
-			for L in deprecation_return.ids[I].logs:
-				print(f"ID: {I} with log variable: {L} as {deprecation_return.ids[I].logs[L]}, {'persistent ' if deprecation_return.ids[I].persistence else ''}{'crashing' if deprecation_return.ids[I].crash else ''}")
-
-	def __call__(self, uuid):
-		if uuid in self.ids:
-			return self.ids[uuid]
-		else:
-			self.ids[uuid] = DeprecationReturnObject(uuid)
-			return self.ids[uuid]
-
-
-deprecation_return = DeprecationReturn()
-
-
 def time_dif(offset=0, mul=1000):
 	print((time.time() * mul) - offset)
 
 
+class FeatureMatrix:  # needs odd sized matrix
+	"""importing non-square odd-sided images has unpredictable results. do _not_ complain if this crashes or gives incorrect results unless you are doing so in a PR to add support for that. Much of the convolution logic assumes a square odd-sided matrix and would slow down, potentially by a lot, if this was removed. If support for such features is added, it will be in the form of opacity support; the image would be fit into the smallest odd-sided square with the extra pixels set as transparent."""
+	def __init__(self, input_feature: str, multichannel: bool = False, opacity: bool = False):
+		"""enabling multichannel if the image is not multichannel has unpredictable results. do _not_ complain if this crashes or gives incorrect results. gray images imported in rgb will function identical to if they were imported as grayscale, other than array dimension differences."""
+		if multichannel is False:
+			self.multi = False
+			self.feature = np.asarray(imageio.imread(str(abs_path(input_feature)), pilmode="L"), dtype=np.float32)
+			self.a, self.b = self.feature.shape
+			self.c = 1
+		elif multichannel is True:
+			self.multi = True
+			if opacity is False:
+				self.opacity = False
+				self.feature = np.asarray(imageio.imread(str(abs_path(input_feature)), pilmode="RGB"), dtype=np.float32)
+				self.a, self.b, self.c = self.feature.shape
+			elif opacity is True:
+				self.opacity = True
+				self.feature = np.asarray(imageio.imread(str(abs_path(input_feature)), pilmode="RGBA"), dtype=np.float32)
+				self.a, self.b, self.c = self.feature.shape
+			else:
+				pass
+		else:
+			pass
+		self.x_offset = math.ceil(self.b / 2) - 1
+		self.y_offset = math.ceil(self.a / 2) - 1
+
+	def coord(self, x, y):  # centered, use negative coords too, again, matrix must be odd sized
+		x = x + self.x_offset
+		y = (-1 * y) + self.y_offset
+		if self.multi:
+			return self.feature[y][x]
+		else:
+			return self.feature[y][x]
+
+	def __getitem__(self, item):
+		return self.feature.__getitem__(item)
+
+	def __repr__(self):
+		out = ""
+		if not self.multi:
+			for row in self.feature:
+				for item in row:
+					# print(" " * (space - len(str(item))), end="")
+					out += str("~" * (3 - len(str(item)))) + str(item) + "|"
+				out += "\n"
+			return out
+		elif self.multi:
+			for row in self.feature:
+				for item in row:
+					for bit in item:
+						out += str("~" * (3 - len(str(bit)))) + str(bit) + "~"
+					out += "|"
+				out += "\n"
+			return out
+
+
 class ImageMatrix:
-	def __init__(self, input_image, multichannel=False, opacity=False):
+	def __init__(self, input_image: str, multichannel: bool = False, opacity: bool = False):
 		if multichannel is False:
 			self.multi = False
 			self.opacity = False
@@ -305,12 +237,11 @@ class ImageMatrix:
 		else:
 			pass
 
-	def convolve(self, input_feature, mono_out=False, progress_bar=True, run_bar=True, name_from="", name_feature="", name_append="", buffer_load_bar=False):
-		# time_offset = time.time() * 1000
-		# time_dif(time_offset)
+	def convolve(self, input_feature: FeatureMatrix, mono_out: bool = False, progress_bar: bool = True, run_bar: bool = True, name_from: str = "", name_feature: str = "", name_append: str = "", buffer_load_bar: bool = False):
+
 		segment_value = (self.a * self.b) / 80
 		segments = [int(segment_value * n) for n in range(1, 81)]
-		# print(progress_bar)
+
 		if run_bar:
 			if progress_bar:
 				if name_from and name_feature:
@@ -386,27 +317,35 @@ class ImageMatrix:
 						print(">", flush=True)
 				else:
 					print("<--small-image-no-progress-bar--------------------------------------------------->", flush=True)
+
 		seg_counter = done_amount = 0
+
 		output = np.zeros(self.image.shape, dtype=np.float32)
+
 		width, height, depth = input_feature.a, input_feature.b, input_feature.c
 		width_partial, height_partial = int(math.floor(width/2)), int(math.floor(height/2))  # avg_val = width * height
-		# print("\ndc", depth, self.c)
+
 		rows = np.array(range(-width_partial, width_partial + 1), dtype=np.intp)
 		cols = np.array(range(-height_partial, height_partial + 1), dtype=np.intp)
+
 		feat_height = range(0, height)
 		feat_width = range(0, width)
+
 		clrmono = (0, 1, 2) if self.multi and mono_out else (0, 1)
-		# time_dif(time_offset)
+
 		if progress_bar:
 			print("(", end="", flush=True)
 		for y in range(self.a):
 			check_bounds_y = (y <= height_partial + 1) or (y >= (self.a - height_partial - 1))
+
 			for x in range(self.b):
 				check_bounds_x = (x <= width_partial + 1) or (x >= (self.b - width_partial - 1))
-				value = self.convolve_sub(input_feature.feature, x, y, rows, cols, feat_width, feat_height, width, height, check_bounds_x, check_bounds_y, return_tuple=((not mono_out) and self.multi), clrmono=clrmono)
-				# print("value", value, type(value))
+
+				value = self.convolve_sub(input_feature.feature, x, y, rows, cols, feat_width, feat_height, width, height, check_bounds_x, check_bounds_y, clrmono=clrmono)
+
 				output[y][x] = value
 				done_amount += 1
+
 				if progress_bar and run_bar:
 					if buffer_load_bar:
 						try:
@@ -426,25 +365,9 @@ class ImageMatrix:
 		if run_bar:
 			if progress_bar:
 				print(")", flush=True)
-		# time_dif(time_offset)
-		# print("#####")
 		return output
 
-	def old_convolve_sub(self, input_feature, x, y, width, height, depth, width_partial, height_partial, avg_val, return_tuple=False, increment=0, channels=(1, 1)):
-		for ya in range(height):
-			if (ya + y > self.a) or (ya + y < 0):
-				avg_val -= width
-				continue
-			for xa in range(width):
-				if (xa + x > self.b) or (xa + x < 0):
-					avg_val -= 1
-					continue
-				out = compare(input_feature.coord(xa - width_partial, ya - height_partial), self.image[y + ya - height_partial][x + xa - width_partial], 255, self.opacity, return_tuple=return_tuple, channels=channels)
-				# print(increment, out)
-				increment += out
-		return deprecation_return("old_convolve_sub")(increment / avg_val, "Please use convolve_sub instead. It is very fast compared to the older algorithm. If you must use this, you can easily change it to use a regular return, which will speed it up a little.")
-
-	def convolve_sub(self, input_feature: np.ndarray, x, y, rows_in: np.ndarray, cols_in: np.ndarray, feat_width, feat_height, width, height, check_bounds_x, check_bounds_y, return_tuple=False, clrmono=(0, 1)):
+	def convolve_sub(self, input_feature: np.ndarray, x, y, rows_in: np.ndarray, cols_in: np.ndarray, feat_width, feat_height, width, height, check_bounds_x, check_bounds_y, clrmono=(0, 1)):
 		rows = rows_in + x
 		cols = cols_in + y
 
@@ -464,7 +387,6 @@ class ImageMatrix:
 		else:
 			masks_c = (0, height - 1, height)
 
-		# print(x, y, self.a, self.b, rows, cols, masks_r, masks_c, feat_width, feat_height, rows[masks_r[0]:masks_r[1]+1], cols[masks_c[0]:masks_c[1]+1], flush=True)
 		data = self.image[np.ix_(
 
 				cols[masks_c[0]
@@ -484,11 +406,6 @@ class ImageMatrix:
 		else:
 			feature_masked = input_feature
 
-		# print("###")
-		# print2d(data)
-		# print("###")
-		# print2d(feature_masked)
-		# print("###")
 		try:
 			cvld = (1 - abs((data - feature_masked) / 255)) * 255
 		except ValueError as error:
@@ -500,62 +417,6 @@ class ImageMatrix:
 			print(x, y, self.a, self.b, rows, cols, masks_r, masks_c, feat_width, feat_height, rows[masks_r[0]:masks_r[1] + 1], cols[masks_c[0]:masks_c[1] + 1])
 			raise error
 		return np.mean(cvld, axis=clrmono, dtype=np.float64)
-
-
-class FeatureMatrix:  # needs odd sized matrix
-	"""importing non-square odd-sided images has unpredictable results. do _not_ complain if this crashes or gives incorrect results unless you are doing so in a PR to add support for that. Much of the convolution logic assumes a square odd-sided matrix and would slow down, potentially by a lot, if this was removed. If support for such features is added, it will be in the form of opacity support; the image would be fit into the smallest odd-sided square with the extra pixels set as transparent."""
-	def __init__(self, input_feature, multichannel=False, opacity=False):
-		"""enabling multichannel if the image is not multichannel has unpredictable results. do _not_ complain if this crashes or gives incorrect results. gray images imported in rgb will function identical to if they were imported as grayscale, other than array dimension differences."""
-		if multichannel is False:
-			self.multi = False
-			self.feature = np.asarray(imageio.imread(str(abs_path(input_feature)), pilmode="L"), dtype=np.float32)
-			self.a, self.b = self.feature.shape
-			self.c = 1
-		elif multichannel is True:
-			self.multi = True
-			if opacity is False:
-				self.opacity = False
-				self.feature = np.asarray(imageio.imread(str(abs_path(input_feature)), pilmode="RGB"), dtype=np.float32)
-				self.a, self.b, self.c = self.feature.shape
-			elif opacity is True:
-				self.opacity = True
-				self.feature = np.asarray(imageio.imread(str(abs_path(input_feature)), pilmode="RGBA"), dtype=np.float32)
-				self.a, self.b, self.c = self.feature.shape
-			else:
-				pass
-		else:
-			pass
-		self.x_offset = math.ceil(self.b / 2) - 1
-		self.y_offset = math.ceil(self.a / 2) - 1
-
-	def coord(self, x, y):  # centered, use negative coords too, again, matrix must be odd sized
-		x = x + self.x_offset
-		y = (-1 * y) + self.y_offset
-		if self.multi:
-			return self.feature[y][x]
-		else:
-			return self.feature[y][x]
-
-	def __getitem__(self, item):
-		return self.feature.__getitem__(item)
-
-	def __repr__(self):
-		out = ""
-		if not self.multi:
-			for row in self.feature:
-				for item in row:
-					# print(" " * (space - len(str(item))), end="")
-					out += str("~" * (3 - len(str(item)))) + str(item) + "|"
-				out += "\n"
-			return out
-		elif self.multi:
-			for row in self.feature:
-				for item in row:
-					for bit in item:
-						out += str("~" * (3 - len(str(bit)))) + str(bit) + "~"
-					out += "|"
-				out += "\n"
-			return out
 
 
 class Features:
@@ -1341,7 +1202,7 @@ class DimensionError(Exception):
 		return "DimensionError: " + self.message
 
 
-def enlarge(array, amount):
+def enlarge(array: np.ndarray, amount):
 	# print2d(array)
 	# print(type(array))
 	if (type(array) == np.ndarray) and (type(amount) == int):
@@ -1359,7 +1220,7 @@ def enlarge(array, amount):
 			return np.kron(array, np.ones(size, dtype="float"))
 
 
-def remap(array, enable=True, minimum_value: Optional[int] = None, maximum_value: Optional[int] = None, max_val=255):
+def remap(array: np.ndarray, enable=True, minimum_value: Optional[int] = None, maximum_value: Optional[int] = None, max_val=255):
 	if not enable and (minimum_value is not None) and (maximum_value is not None):
 		return array
 	if minimum_value is not None:
@@ -1392,18 +1253,18 @@ def bounds(i, l, u):
 		return i
 
 
-def save(array, name):
+def save(array: np.ndarray, name):
 	# print2d(array)
 	name = name + ".png"
 	imageio.imsave(name, array.astype(dtype=np.uint8))
 
 
-def show_image(ndarray):
+def show_image(ndarray: np.ndarray):
 	plt.imshow(ndarray, interpolation='nearest')
 	plt.show()
 
 
-def saveview(array, name, mode="save"):
+def saveview(array: np.ndarray, name, mode="save"):
 	mode = mode.lower()
 	if mode not in ["save", "view", "both"]:
 		raise InvalidArgumentError("mode parameter must be 'save', 'view' or 'both'")
@@ -1458,7 +1319,7 @@ class Convolution:
 	def scale(self, value: int):
 		self.resize: int = value
 
-	def convolve(self, input_feature: object, clip_tuple = (False, None, None, 255), resize: int = 1, append_number: bool = False, viewmode: str = "save", mono_out: bool = False, run_bar: bool = True, append_custom: Union[str, int] = ""):  # mono_out does nothing without multichannel
+	def convolve(self, input_feature: object, clip_tuple=(False, None, None, 255), resize: int = 1, append_number: bool = False, viewmode: str = "save", mono_out: bool = False, run_bar: bool = True, append_custom: Union[str, int] = ""):  # mono_out does nothing without multichannel
 
 		append = self.name + "_" + str(input_feature).split("/")[-1].split(".")[0] + "_" + str(input_feature).split("/")[-2]
 		name_feature: str = str(input_feature).split("/")[-1].split(".")[0] + "_" + str(input_feature).split("/")[-2]
@@ -1493,129 +1354,11 @@ class Convolution:
 		elif clip_tuple is True:
 			clip_tuple = (True, None, None, 255)
 
-		# print(self.size * convolve_feature.a * convolve_feature.b)
-
-		# print(progress_bar, self.size, convolve_size)
 		out: np.ndarray = self.main_image.convolve(convolve_feature, mono_out, progress_bar=progress_bar, run_bar=run_bar, name_from=str(self.name.split("/")[-1]), name_feature=str(name_feature), name_append=name_append, buffer_load_bar=buffer_load_bar)
 
 		output: np.ndarray = enlarge(remap(out, *clip_tuple), int(resize * self.resize))
 
 		saveview(output, append, viewmode)
-
-
-'''
-o_large = Convolution("test images/input_o_large.png", False, False)
-o_large.scale(4)
-o_large.convolve(Features.Three.Line.Across(), 0, 1, False, view=False)
-o_large.convolve(Features.Three.Line.Up(), 0, 1, False, view=False)
-o_large.convolve(Features.Three.Line.DownLeft(), 0, 1, False, view=False)
-o_large.convolve(Features.Three.Line.DownRight(), 0, 1, False, view=False)
-o_large.convolve(Features.Three.X(), 0, 1, False, view=False)
-o_large.convolve(Features.Three.Dot(), 0, 1, False, view=False)
-o_large.convolve(Features.Three.Arrow.Up(), 0, 1, False, view=False)
-o_large.convolve(Features.Three.Arrow.Down(), 0, 1, False, view=False)
-o_large.convolve(Features.Three.Arrow.Left(), 0, 1, False, view=False)
-o_large.convolve(Features.Three.Arrow.Right(), 0, 1, False, view=False)
-# '''
-
-'''
-x_large = Convolution("test images/input_x_large.png", False, False)
-x_large.scale(4)
-x_large.convolve(Features.Three.Line.Across(), 0, 1, False, view=False)
-x_large.convolve(Features.Three.Line.Up(), 0, 1, False, view=False)
-x_large.convolve(Features.Three.Line.DownLeft(), 0, 1, False, view=False)
-x_large.convolve(Features.Three.Line.DownRight(), 0, 1, False, view=False)
-x_large.convolve(Features.Three.X(), 0, 1, False, view=False)
-x_large.convolve(Features.Three.Dot(), 0, 1, False, view=False)
-x_large.convolve(Features.Three.Arrow.Up(), 0, 1, False, view=False)
-x_large.convolve(Features.Three.Arrow.Down(), 0, 1, False, view=False)
-x_large.convolve(Features.Three.Arrow.Left(), 0, 1, False, view=False)
-x_large.convolve(Features.Three.Arrow.Right(), 0, 1, False, view=False)
-# '''
-
-
-"""
-
-def time_tests(count):
-	time_vars.timer = 0
-	time_vars.enable = True
-	approx_time_per_pixel = 0
-	tests = 0
-	x_large = Convolution("test images/input_x_large.png", False, False)
-	for n in range(count):
-		x_large.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 3x3 gs")
-	approx_time_per_pixel = (time_vars.timer / count) / (21 * 21 * 3 * 3 * 1)
-	x_large = Convolution("test images/input_x_large.png", True, False)
-	for n in range(count):
-		x_large.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 3x3 mono -> clr")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
-	tests += 1
-	for n in range(count):
-		x_large.convolve(Features.Three.Donut(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 3x3 mono -> clr -> mono")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
-	tests += 1
-	for n in range(count):
-		x_large.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 5x5 mono x clr")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
-	tests += 1
-	for n in range(count):
-		x_large.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 5x5 mono x clr -> mono")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
-	tests += 1
-	for n in range(count):
-		x_large.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 9x9 mono x clr")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
-	tests += 1
-	for n in range(count):
-		x_large.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 9x9 mono x clr -> mono")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
-	tests += 1
-	clr_small = Convolution("test images/input_color_small.png", True, False)
-	for n in range(count):
-		clr_small.convolve(Features.Three.Donut(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 3x3 clr x mono")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
-	tests += 1
-	for n in range(count):
-		clr_small.convolve(Features.Three.Donut(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 3x3 clr x mono -> mono")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 3 * 3 * 3)
-	tests += 1
-	for n in range(count):
-		clr_small.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 5x5 clr")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
-	tests += 1
-	for n in range(count):
-		clr_small.convolve(Features.Color5.Horiz.LToR(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 5x5 clr -> mono")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 5 * 5 * 3)
-	tests += 1
-	for n in range(count):
-		clr_small.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 9x9 clr")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
-	tests += 1
-	for n in range(count):
-		clr_small.convolve(Features.Color9.CCW.RedBottom(), 0, 1, False, mono_out=True, view=False, run_bar=False, append_custom="test_output")
-	print(time_vars.timer / count, "ms 21x21 9x9 clr -> mono")
-	approx_time_per_pixel += (time_vars.timer / count) / (21 * 21 * 9 * 9 * 3)
-	tests += 1
-	approx_time_per_pixel /= tests
-	print(approx_time_per_pixel, "ms, approximate time per pixel")
-	time_vars.timer = 0
-	time_vars.enable = False  # remove the decorator for normal use
-
-
-# time_tests(1000)
-# """
 
 
 # '''
